@@ -13,32 +13,87 @@ import io
 import numpy as np
 import pydub
 from gtts import gTTS
+from scipy.signal import butter, lfilter
 
-# Streamlit Config
-st.set_page_config(page_title="AI Voice Studio", page_icon="🎙️", layout="wide")
+# Streamlit Config & Custom Pro-Studio UI Theme
+st.set_page_config(page_title="AI Voice Studio PRO", page_icon="🎙️", layout="wide")
 
-st.title("🎙️ AI Multi-Language Voice Studio")
-st.markdown("ഓഡിയോ നിർമ്മാണവും എഡിറ്റിംഗും ഇനി ഒരിടത്ത്! (Malayalam, Arabic, English)")
+# Custom Dark Studio CSS Styling
+st.markdown("""
+    <style>
+    .main { background-color: #0f111a; color: #ffffff; }
+    .stButton>button {
+        background: linear-gradient(45deg, #ff4b4b, #ff7676);
+        color: white; border: none; padding: 10px 25px;
+        border-radius: 8px; font-weight: bold; width: 100%;
+        transition: all 0.3s ease;
+    }
+    .stButton>button:hover { transform: scale(1.02); box-shadow: 0 4px 15px rgba(255,75,75,0.4); }
+    h1, h2, h3 { color: #00ffcc !important; font-family: 'Poppins', sans-serif; }
+    .stSlider>div>div>div>div { background-color: #00ffcc !important; }
+    .css-10trblm { color: #ffffff; }
+    </style>
+    """, unsafe inline=True)
+
+st.title("🎙️ AI Multi-Language Voice Studio PRO")
+st.markdown("<p style='color:#8a99ad; font-size:18px;'>പ്രൊഫഷണൽ ഓഡിയോ നിർമ്മാണവും എഡിറ്റിംഗും ഇനി ഒരിടത്ത്! (Malayalam, Arabic, English)</p>", unsafe_html=True)
 
 # Sidebar for Navigation
-option = st.sidebar.selectbox("എന്ത് ചെയ്യണം?", ["Text to Voice", "Audio Enhancer & Editor"])
+option = st.sidebar.selectbox("🎛️ കൺട്രോൾ പാനൽ", ["🗣️ Text to Voice", "🎚️ Pro Audio Enhancer & Studio"])
+
+# --- പൈത്തൺ ഫിൽട്ടർ ഫങ്ക്ഷനുകൾ (Bass & Treble EQ) ---
+def butter_lowpass(cutoff, fs, order=5):
+    return butter(order, cutoff, btype='low', fs=fs)
+
+def butter_highpass(cutoff, fs, order=5):
+    return butter(order, cutoff, btype='high', fs=fs)
+
+def apply_eq(audio_segment, bass_gain, treble_gain):
+    # ഓഡിയോ ഡാറ്റ numpy array-ലേക്ക് മാറ്റുന്നു
+    samples = np.array(audio_segment.get_array_of_samples(), dtype=np.float32)
+    fs = audio_segment.frame_rate
+    
+    # Bass Boost (Low Pass ഫിൽട്ടർ വഴി താഴ്ന്ന ഫ്രീക്വൻസി കൂട്ടുന്നു)
+    if bass_gain != 0:
+        b, a = butter_lowpass(250, fs, order=2)
+        bass_layer = lfilter(b, a, samples)
+        samples += bass_layer * (bass_gain / 10.0)
+        
+    # Treble Boost (High Pass ഫിൽട്ടർ വഴി ഉയർന്ന ഫ്രീക്വൻസി കൂട്ടുന്നു)
+    if treble_gain != 0:
+        b, a = butter_highpass(4000, fs, order=2)
+        treble_layer = lfilter(b, a, samples)
+        samples += treble_layer * (treble_gain / 10.0)
+        
+    # തിരികെ pydub segment ആക്കുന്നു
+    samples = np.clip(samples, -32768, 32767).astype(np.int16)
+    return audio_segment._spawn(samples.tobytes())
+
+def apply_reverb_echo(audio_segment, delay_ms, feedback):
+    # ലളിതവും മനോഹരവുമായ ഒരു എക്കോ/റിവെർബ് എഫക്റ്റ്
+    if delay_ms == 0 or feedback == 0:
+        return audio_segment
+    output = audio_segment
+    for i in range(1, 4): # 3 ലെയർ എക്കോ വഴി റിവെർബ് ഫീൽ ഉണ്ടാക്കുന്നു
+        echo = audio_segment.minus_dB(i * (10 / feedback))
+        output = output.overlay(echo, position=i * delay_ms)
+    return output
 
 # ---------------------------------------------------------
 # ഭാഗം 1: Text to Voice (Google TTS & Edge TTS)
 # ---------------------------------------------------------
-if option == "Text to Voice":
+if option == "🗣️ Text to Voice":
     st.subheader("🗣️ Text to Natural Voice Converter")
     
-    text = st.text_area("ടെക്സ്റ്റ് ഇവിടെ നൽകുക:", height=150, placeholder="നമസ്കാരം, സുഖമാണോ?")
+    text = st.text_area("ടെക്സ്റ്റ് ഇവിടെ നൽകുക:", height=150, placeholder="നമസ്കാരം, സുഖമാണോ? നിങ്ങളുടെ ടെക്സ്റ്റ് ഇവിടെ ടൈപ്പ് ചെയ്യാം...")
     
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # വോയ്‌സ് എഞ്ചിൻ തിരഞ്ഞെടുക്കുക
-        engine = st.selectbox("TTS Engine തിരഞ്ഞെടുക്കുക", ["Microsoft Edge TTS", "Google TTS"])
+        engine = st.selectbox("TTS Engine തിരഞ്ഞെടുക്കുക", ["Microsoft Edge TTS (Midhun/Sobhana)", "Google TTS"])
         
     with col2:
-        if engine == "Microsoft Edge TTS":
+        if engine == "Microsoft Edge TTS (Midhun/Sobhana)":
             voice_options = {
                 "Malayalam: Female (Sobhana)": "ml-IN-SobhanaNeural",
                 "Malayalam: Male (Midhun)": "ml-IN-MidhunNeural",
@@ -47,7 +102,7 @@ if option == "Text to Voice":
                 "English: Female (Ava)": "en-US-AvaNeural",
                 "English: Male (Andrew)": "en-US-AndrewNeural"
             }
-        else: # Google TTS
+        else:
             voice_options = {
                 "Malayalam (Google Voice)": "ml",
                 "Arabic (Google Voice)": "ar",
@@ -58,7 +113,6 @@ if option == "Text to Voice":
     with col3:
         speed = st.slider("വേഗത (Speed)", 0.5, 2.0, 1.0, 0.1)
 
-    # Edge TTS ജനറേറ്റ് ചെയ്യാനുള്ള ഫങ്ക്ഷൻ
     async def generate_edge_voice(text, voice_code, rate):
         communicate = edge_tts.Communicate(text, voice_code, rate=f"{int((rate - 1) * 100):+d}%")
         data = b""
@@ -67,50 +121,46 @@ if option == "Text to Voice":
                 data += chunk["data"]
         return data
 
-    if st.button("🔊 Voice ആക്കുക", type="primary"):
+    if st.button("🔊 Voice ജനറേറ്റ് ചെയ്യുക", type="primary"):
         if text.strip():
-            with st.spinner("ശബ്ദം ഉണ്ടാക്കുന്നു..."):
+            with st.spinner("സ്റ്റുഡിയോ ക്വാളിറ്റി ശബ്ദം ഉണ്ടാക്കുന്നു..."):
                 try:
                     voice_code = voice_options[selected_voice]
                     
-                    if engine == "Microsoft Edge TTS":
-                        # Edge TTS റൺ ചെയ്യുന്നു
+                    if "Microsoft Edge TTS" in engine:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         audio_bytes = loop.run_until_complete(generate_edge_voice(text, voice_code, speed))
-                    
                     else:
-                        # Google TTS റൺ ചെയ്യുന്നു
                         tts = gTTS(text=text, lang=voice_code)
                         fp = io.BytesIO()
                         tts.write_to_fp(fp)
                         audio_bytes = fp.getvalue()
                         
-                        # Google TTS-ൽ സ്പീഡ് മാറ്റണമെങ്കിൽ pydub ഉപയോഗിക്കുന്നു
                         if speed != 1.0:
                             audio_segment = pydub.AudioSegment.from_file(io.BytesIO(audio_bytes), format="mp3")
                             new_sample_rate = int(audio_segment.frame_rate * speed)
                             audio_segment = audio_segment._spawn(audio_segment.raw_data, overrides={'frame_rate': new_sample_rate})
                             audio_segment = audio_segment.set_frame_rate(audio_segment.frame_rate)
-                            
                             out_io = io.BytesIO()
                             audio_segment.export(out_io, format="mp3")
                             audio_bytes = out_io.getvalue()
                     
+                    st.success("✅ വോയ്‌സ് റെഡിയായിരിക്കുന്നു!")
                     st.audio(audio_bytes, format="audio/mp3")
-                    st.download_button("📥 Download MP3", audio_bytes, file_name="ai_voice.mp3", mime="audio/mp3")
+                    st.download_button("📥 Download MP3", audio_bytes, file_name="ai_voice_pro.mp3", mime="audio/mp3")
                 except Exception as e:
                     st.error(f"Error: {e}")
         else:
             st.warning("ദയവായി ടെക്സ്റ്റ് ടൈപ്പ് ചെയ്യുക!")
 
 # ---------------------------------------------------------
-# ഭാഗം 2: Audio Enhancer & Editor
+# ഭാഗം 2: Pro Audio Enhancer & Studio (പൂർണ്ണമായ മാസ്റ്ററിംഗ്)
 # ---------------------------------------------------------
-elif option == "Audio Enhancer & Editor":
-    st.subheader("🎚️ Audio Enhancer & Volume Booster")
+elif option == "🎚️ Pro Audio Enhancer & Studio":
+    st.subheader("🎚️ Pro Mastering Studio (Bass, Treble, Compressor & Reverb)")
     
-    uploaded_file = st.file_uploader("ഓഡിയോ ഫയൽ അപ്‌ലോഡ് ചെയ്യുക (wav, mp3)", type=["wav", "mp3"])
+    uploaded_file = st.file_uploader("ഓഡിയോ ഫയൽ അപ്‌ലോഡ് ചെയ്യുക (WAV, MP3)", type=["wav", "mp3"])
 
     if uploaded_file is not None:
         try:
@@ -118,33 +168,49 @@ elif option == "Audio Enhancer & Editor":
             audio_segment = pydub.AudioSegment.from_file(io.BytesIO(file_bytes))
             
             st.divider()
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns(3)
             
             with c1:
-                st.markdown("### 🔊 Basic Settings")
-                vol_change = st.slider("Volume Booster (dB)", -20.0, 20.0, 3.5, 0.5)
+                st.markdown("### 🔊 Volume & Master")
+                vol_change = st.slider("Volume Amplify (dB)", -20.0, 20.0, 3.5, 0.5)
+                compressor_on = st.checkbox("⚡ Auto Compressor (Normalize)", value=True)
                 
             with c2:
-                st.markdown("### 🎼 Pitch Settings")
-                pitch_change = st.slider("Change Pitch / Speed", 0.5, 2.0, 1.0, 0.1)
+                st.markdown("### 🎸 Studio EQ")
+                bass_boost = st.slider("Bass Booster 🔥", -10.0, 30.0, 5.0, 0.5)
+                treble_boost = st.slider("Treble Booster ✨", -10.0, 30.0, 2.0, 0.5)
 
-            if st.button("Apply Effects", type="primary"):
-                with st.spinner("പ്രോസസ്സ് ചെയ്യുന്നു..."):
+            with c3:
+                st.markdown("### 🏛️ Spatial Effects")
+                reverb_delay = st.slider("Reverb / Echo (Delay ms)", 0, 500, 150, 10)
+                reverb_feedback = st.slider("Reverb Depth (Feedback)", 0.0, 1.0, 0.3, 0.1)
+
+            if st.button("🎛️ Apply Studio Effects", type="primary"):
+                with st.spinner("ഓഡിയോ മാസ്റ്ററിംഗ് ചെയ്തുകൊണ്ടിരിക്കുന്നു..."):
+                    
+                    # 1. Volume മാറ്റുന്നു
                     processed = audio_segment + vol_change
                     
-                    if pitch_change != 1.0:
-                        new_sample_rate = int(processed.frame_rate * pitch_change)
-                        processed = processed._spawn(processed.raw_data, overrides={'frame_rate': new_sample_rate})
-                        processed = processed.set_frame_rate(audio_segment.frame_rate)
+                    # 2. Advanced Equalizer (Bass & Treble)
+                    processed = apply_eq(processed, bass_boost, treble_boost)
                     
+                    # 3. Reverb / Echo Spatial Effect
+                    if reverb_delay > 0 and reverb_feedback > 0:
+                        processed = apply_reverb_echo(processed, reverb_delay, reverb_feedback)
+                    
+                    # 4. Pro Compressor (Audio Clipping വരാതിരിക്കാൻ)
+                    if compressor_on:
+                        processed = pydub.effects.normalize(processed)
+                    
+                    # ഫയൽ എക്സ്പോർട്ട് ചെയ്യുന്നു
                     out_io = io.BytesIO()
                     processed.export(out_io, format="wav")
                     
-                    st.success("✅ റെഡി!")
+                    st.success("🎯 മാസ്റ്ററിംഗ് പൂർത്തിയായി! നിങ്ങളുടെ പ്രൊഫഷണൽ ഫയൽ റെഡി.")
                     st.audio(out_io.getvalue(), format="audio/wav")
-                    st.download_button("📥 Download Enhanced File", out_io.getvalue(), "enhanced.wav", "audio/wav")
+                    st.download_button("📥 Download Mastered File", out_io.getvalue(), "studio_mastered.wav", "audio/wav")
         except Exception as e:
-            st.error(f"Error: {e}. Please try uploading a proper WAV or MP3 file.")
+            st.error(f"Error: {e}. ലോഗ് പരിശോധിക്കുക അല്ലെങ്കിൽ ശരിയായ ഓഡിയോ ഫയൽ നൽകുക.")
 
 st.divider()
-st.caption("Developed for Ashraf MJ • Powered by Google TTS, Edge-TTS & Pydub")
+st.caption("Developed for Ashraf MJ • Powered by Advanced Scipy Filters, Google TTS, Edge-TTS & Pydub")
