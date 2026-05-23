@@ -3,8 +3,8 @@ import edge_tts
 import asyncio
 import io
 import numpy as np
-from pedalboard import Pedalboard, Reverb, Compressor, Delay, Gain, LowShelfFilter, HighShelfFilter
-from pedalboard.io import AudioFile
+from scipy.io import wavfile
+import pydub
 
 # Streamlit Config
 st.set_page_config(page_title="AI Voice Studio", page_icon="🎙️", layout="wide")
@@ -62,7 +62,7 @@ if option == "Text to Voice":
             st.warning("ദയവായി ടെക്സ്റ്റ് ടൈപ്പ് ചെയ്യുക!")
 
 # ---------------------------------------------------------
-# ഭാഗം 2: Audio Enhancer & Editor (Bass, Treble, Volume)
+# ഭാഗം 2: Audio Enhancer & Editor (Volume & Pitch)
 # ---------------------------------------------------------
 elif option == "Audio Enhancer & Editor":
     st.subheader("🎚️ Audio Enhancer & Volume Booster")
@@ -71,58 +71,41 @@ elif option == "Audio Enhancer & Editor":
 
     if uploaded_file is not None:
         try:
-            # Pedalboard AudioFile ഉപയോഗിച്ച് ഫയൽ റീഡ് ചെയ്യുന്നു
-            with AudioFile(io.BytesIO(uploaded_file.read())) as f:
-                audio_data = f.read(f.frames)
-                sample_rate = f.samplerate
+            # pydub ഉപയോഗിച്ച് ഓഡിയോ ലോഡ് ചെയ്യുന്നു (MP3/WAV സപ്പോർട്ട് ചെയ്യാൻ)
+            file_bytes = uploaded_file.read()
+            audio_segment = pydub.AudioSegment.from_file(io.BytesIO(file_bytes))
             
             st.divider()
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
             
             with c1:
-                st.markdown("### 🔊 Basic")
-                vol = st.slider("Volume (dB)", -10.0, 30.0, 3.5)
-                comp_thresh = st.slider("Compression (Threshold)", -40, 0, -20)
+                st.markdown("### 🔊 Basic Settings")
+                vol_change = st.slider("Volume Booster (dB)", -20.0, 20.0, 3.5, 0.5)
                 
             with c2:
-                st.markdown("### 🎸 EQ (Bass & Treble)")
-                bass = st.slider("Bass Boost", -10.0, 20.0, 0.0)
-                treble = st.slider("Treble Boost", -10.0, 20.0, 0.0)
-
-            with c3:
-                st.markdown("### 🏛️ Effects")
-                rev_wet = st.slider("Reverb (Wet Level)", 0.0, 1.0, 0.1)
-                del_mix = st.slider("Delay / Echo", 0.0, 1.0, 0.0)
+                st.markdown("### 🎼 Pitch Settings")
+                pitch_change = st.slider("Change Pitch / Speed", 0.5, 2.0, 1.0, 0.1)
 
             if st.button("Apply Effects", type="primary"):
                 with st.spinner("പ്രോസസ്സ് ചെയ്യുന്നു..."):
-                    # Pedalboard Pipeline
-                    board = Pedalboard([
-                        LowShelfFilter(cutoff_frequency_hz=250, gain_db=bass),
-                        HighShelfFilter(cutoff_frequency_hz=4000, gain_db=treble),
-                        Gain(gain_db=vol),
-                        Compressor(threshold_db=comp_thresh, ratio=4),
-                        Reverb(room_size=0.6, wet_level=rev_wet),
-                        Delay(delay_seconds=0.4, feedback=0.3, mix=del_mix)
-                    ])
-
-                    processed_audio = board(audio_data, sample_rate)
+                    # 1. Volume മാറ്റുന്നു
+                    processed = audio_segment + vol_change
                     
-                    # Normalization (ശബ്ദം വികൃതമാകാതിരിക്കാൻ)
-                    peak = np.max(np.abs(processed_audio))
-                    if peak > 0:
-                        processed_audio = processed_audio / peak
-
-                    # സേവ് ചെയ്യുന്നു
+                    # 2. Pitch/Speed മാറ്റുന്നു
+                    if pitch_change != 1.0:
+                        new_sample_rate = int(processed.frame_rate * pitch_change)
+                        processed = processed._spawn(processed.raw_data, overrides={'frame_rate': new_sample_rate})
+                        processed = processed.set_frame_rate(audio_segment.frame_rate)
+                    
+                    # എക്സ്പോർട്ട് ചെയ്യുന്നു
                     out_io = io.BytesIO()
-                    with AudioFile(out_io, 'w', sample_rate, processed_audio.shape[0]) as f:
-                        f.write(processed_audio)
+                    processed.export(out_io, format="wav")
                     
                     st.success("✅ റെഡി!")
-                    st.audio(out_io.getvalue())
+                    st.audio(out_io.getvalue(), format="audio/wav")
                     st.download_button("📥 Download Enhanced File", out_io.getvalue(), "enhanced.wav", "audio/wav")
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"Error: {e}. Please try uploading a proper WAV or MP3 file.")
 
 st.divider()
-st.caption("Developed for Ashraf MJ • Powered by Edge-TTS & Pedalboard")
+st.caption("Developed for Ashraf MJ • Powered by Edge-TTS & Scipy/Pydub")
