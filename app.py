@@ -1,9 +1,16 @@
+import sys
+# Python 3.13+ പതിപ്പുകളിൽ pydub ക്രാഷ് ആകാതിരിക്കാൻ audioop റീഡയറക്ട് ചെയ്യുന്നു
+try:
+    import audioop
+except ImportError:
+    import audioop_lts
+    sys.modules['audioop'] = audioop_lts
+
 import streamlit as st
 import edge_tts
 import asyncio
 import io
 import numpy as np
-from scipy.io import wavfile
 import pydub
 
 # Streamlit Config
@@ -71,7 +78,6 @@ elif option == "Audio Enhancer & Editor":
 
     if uploaded_file is not None:
         try:
-            # pydub ഉപയോഗിച്ച് ഓഡിയോ ലോഡ് ചെയ്യുന്നു (MP3/WAV സപ്പോർട്ട് ചെയ്യാൻ)
             file_bytes = uploaded_file.read()
             audio_segment = pydub.AudioSegment.from_file(io.BytesIO(file_bytes))
             
@@ -88,16 +94,13 @@ elif option == "Audio Enhancer & Editor":
 
             if st.button("Apply Effects", type="primary"):
                 with st.spinner("പ്രോസസ്സ് ചെയ്യുന്നു..."):
-                    # 1. Volume മാറ്റുന്നു
                     processed = audio_segment + vol_change
                     
-                    # 2. Pitch/Speed മാറ്റുന്നു
                     if pitch_change != 1.0:
                         new_sample_rate = int(processed.frame_rate * pitch_change)
                         processed = processed._spawn(processed.raw_data, overrides={'frame_rate': new_sample_rate})
                         processed = processed.set_frame_rate(audio_segment.frame_rate)
                     
-                    # എക്സ്പോർട്ട് ചെയ്യുന്നു
                     out_io = io.BytesIO()
                     processed.export(out_io, format="wav")
                     
@@ -108,4 +111,4 @@ elif option == "Audio Enhancer & Editor":
             st.error(f"Error: {e}. Please try uploading a proper WAV or MP3 file.")
 
 st.divider()
-st.caption("Developed for Ashraf MJ • Powered by Edge-TTS & Scipy/Pydub")
+st.caption("Developed for Ashraf MJ • Powered by Edge-TTS & Pydub")
