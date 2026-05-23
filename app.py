@@ -18,7 +18,7 @@ from scipy.signal import butter, lfilter
 # Streamlit Config & Custom Pro-Studio UI Theme
 st.set_page_config(page_title="AI Voice Studio PRO", page_icon="🎙️", layout="wide")
 
-# Custom Dark Studio CSS Styling
+# Custom Dark Studio CSS Styling (Tidied Up)
 st.markdown("""
     <style>
     .main { background-color: #0f111a; color: #ffffff; }
@@ -31,12 +31,11 @@ st.markdown("""
     .stButton>button:hover { transform: scale(1.02); box-shadow: 0 4px 15px rgba(255,75,75,0.4); }
     h1, h2, h3 { color: #00ffcc !important; font-family: 'Poppins', sans-serif; }
     .stSlider>div>div>div>div { background-color: #00ffcc !important; }
-    .css-10trblm { color: #ffffff; }
     </style>
     """, unsafe_allow_html=True)
 
 st.title("🎙️ AI Multi-Language Voice Studio PRO")
-st.markdown("<p style='color:#8a99ad; font-size:18px;'>പ്രൊഫഷണൽ ഓഡിയോ നിർമ്മാണവും എഡിറ്റിംഗും ഇനി ഒരിടത്ത്! (Malayalam, Arabic, English)</p>", unsafe_html=True)
+st.markdown("<p style='color:#8a99ad; font-size:18px;'>പ്രൊഫഷണൽ ഓഡിയോ നിർമ്മാണവും എഡിറ്റിംഗും ഇനി ഒരിടത്ത്! (Malayalam, Arabic, English)</p>", unsafe_allow_html=True)
 
 # Sidebar for Navigation
 option = st.sidebar.selectbox("🎛️ കൺട്രോൾ പാനൽ", ["🗣️ Text to Voice", "🎚️ Pro Audio Enhancer & Studio"])
@@ -78,21 +77,16 @@ def apply_pure_echo(audio_segment, delay_ms, feedback, echo_count=3):
         output = output.overlay(echo_layer, position=i * delay_ms)
     return output
 
-# --- റീവെർബ് ഫങ്ക്ഷൻ (പ്രത്യേകം രൂപകൽപ്പന ചെയ്തത്) ---
+# --- റീവെർബ് ഫങ്ക്ഷൻ ---
 def apply_studio_reverb(audio_segment, room_size):
     if room_size == 0:
         return audio_segment
-    
-    # റീവെർബ് ഇഫക്റ്റ് ലഭിക്കാൻ വളരെ ചെറിയ സമയ വ്യത്യാസങ്ങളിൽ നിരവധി ലെയറുകൾ മിക്സ് ചെയ്യുന്നു
     reverb_output = audio_segment
-    delays = [20, 40, 65, 85] # മില്ലിസെക്കൻഡുകൾ
-    
+    delays = [20, 40, 65, 85]
     for d in delays:
-        # റൂം സൈസ് കൂടുന്നതിനനുസരിച്ച് റിവെർബിന്റെ ആഴം കൂടുന്നു
         gain_reduction = 15.0 - (room_size * 10.0)
         rev_layer = audio_segment.minus_dB(gain_reduction)
         reverb_output = reverb_output.overlay(rev_layer, position=d)
-        
     return reverb_output
 
 # ---------------------------------------------------------
@@ -171,7 +165,7 @@ if option == "🗣️ Text to Voice":
             st.warning("ദയവായി ടെക്സ്റ്റ് ടൈപ്പ് ചെയ്യുക!")
 
 # ---------------------------------------------------------
-# ഭാഗം 2: Pro Audio Enhancer & Studio (All Tools Included)
+# ഭാഗം 2: Pro Audio Enhancer & Studio
 # ---------------------------------------------------------
 elif option == "🎚️ Pro Audio Enhancer & Studio":
     st.subheader("🎚️ Pro Mastering Studio (All Professional Tools)")
@@ -198,38 +192,36 @@ elif option == "🎚️ Pro Audio Enhancer & Studio":
 
             with c3:
                 st.markdown("### 🏛️ Professional Effects")
-                # 1. റീവെർബ് നോബ് (പ്രത്യേകമായി ചേർത്തത്)
-                reverb_level = st.slider("Studio Reverb (Room Size)", 0.0, 1.0, 0.3, 0.05)
-                # 2. എക്കോ നോബ്
+                reverb_level = st.slider("Studio Reverb (Room Size)", 0.0, 1.0, 0.0, 0.05)
                 echo_delay = st.slider("Echo Delay (Time ms)", 0, 1000, 0, 20)
                 echo_feedback = st.slider("Echo Repeat (Feedback)", 0.0, 1.0, 0.4, 0.05)
+                echo_count = st.slider("Total Echo Repeats", 1, 5, 3) # ഇവിടെ ഫിക്സ് ചെയ്തു!
 
             if st.button("🎛️ Apply Studio Effects", type="primary"):
                 with st.spinner("ഓഡിയോ മാസ്റ്ററിംഗ് ചെയ്തുകൊണ്ടിരിക്കുന്നു..."):
                     
-                    # 1. Volume മാറ്റുന്നു
+                    # 1. Volume
                     processed = audio_segment + vol_change
                     
-                    # 2. Advanced Equalizer (Bass & Treble)
+                    # 2. EQ
                     processed = apply_eq(processed, bass_boost, treble_boost)
                     
-                    # 3. Studio Reverb Effect (പ്രത്യേകമായി വർക്ക് ചെയ്യുന്നു)
+                    # 3. Separate Reverb
                     if reverb_level > 0:
                         processed = apply_studio_reverb(processed, reverb_level)
                     
-                    # 4. Pure Digital Echo Effect
+                    # 4. Pure Echo
                     if echo_delay > 0 and echo_feedback > 0:
-                        processed = apply_pure_echo(processed, echo_delay, echo_feedback, echo_count=3)
+                        processed = apply_pure_echo(processed, echo_delay, echo_feedback, echo_count)
                     
-                    # 5. Pro Compressor / Normalizer
+                    # 5. Compressor
                     if compressor_on:
                         processed = pydub.effects.normalize(processed)
                     
-                    # ഫയൽ എക്സ്പോർട്ട് ചെയ്യുന്നു
                     out_io = io.BytesIO()
                     processed.export(out_io, format="wav")
                     
-                    st.success("🎯 മാസ്റ്ററിംഗ് പൂർത്തിയായി! നിങ്ങളുടെ പ്രൊഫഷണൽ ഫയൽ റെഡി.")
+                    st.success("🎯 മാസ്റ്ററിംഗ് പൂർത്തിയായി!")
                     st.audio(out_io.getvalue(), format="audio/wav")
                     st.download_button("📥 Download Mastered File", out_io.getvalue(), "studio_mastered.wav", "audio/wav")
         except Exception as e:
