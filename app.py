@@ -1,10 +1,11 @@
 import sys
-# Python 3.13+ പതിപ്പുകളിൽ pydub ക്രാഷ് ആകാതിരിക്കാൻ audioop റീഡയറക്ട് ചെയ്യുന്നു
+# Python 3.13/3.14+ പതിപ്പുകളിൽ pydub ക്രാഷ് ആകാതിരിക്കാൻ audioop ഒഫീഷ്യൽ റീഡയറക്ഷൻ
 try:
     import audioop
 except ImportError:
     import audioop_lts
     sys.modules['audioop'] = audioop_lts
+    sys.modules['pyaudioop'] = audioop_lts  # പുതിയ പൈത്തൺ അപ്‌ഡേറ്റ് എറർ ഒഴിവാക്കാൻ
 
 import streamlit as st
 import edge_tts
@@ -18,7 +19,7 @@ from scipy.signal import butter, lfilter
 # Streamlit Config & Custom Pro-Studio UI Theme
 st.set_page_config(page_title="AI Voice Studio PRO", page_icon="🎙️", layout="wide")
 
-# Custom Dark Studio CSS Styling (Tidied Up)
+# Custom Dark Studio CSS Styling
 st.markdown("""
     <style>
     .main { background-color: #0f111a; color: #ffffff; }
@@ -66,26 +67,27 @@ def apply_eq(audio_segment, bass_gain, treble_gain):
     samples = np.clip(samples, -32768, 32767).astype(np.int16)
     return audio_segment._spawn(samples.tobytes())
 
-# --- എക്കോ ഫങ്ക്ഷൻ ---
+# --- ഫിക്സ് ചെയ്ത പ്യുവർ എക്കോ ഫങ്ക്ഷൻ (minus_dB എറർ പരിഹരിച്ചത്) ---
 def apply_pure_echo(audio_segment, delay_ms, feedback, echo_count=3):
     if delay_ms == 0 or feedback == 0:
         return audio_segment
     output = audio_segment
     for i in range(1, echo_count + 1):
-        attenuation = i * (12.0 * (1.0 - feedback + 0.1))
-        echo_layer = audio_segment.minus_dB(attenuation)
+        attenuation = int(i * (12.0 * (1.0 - feedback + 0.1)))
+        # minus_dB-ക്ക് പകരം pydub സ്റ്റാൻഡേർഡ് മാറ്റിനിർത്തൽ (-) ഉപയോഗിക്കുന്നു
+        echo_layer = audio_segment - attenuation
         output = output.overlay(echo_layer, position=i * delay_ms)
     return output
 
-# --- റീവെർബ് ഫങ്ക്ഷൻ ---
+# --- ഫിക്സ് ചെയ്ത റീവെർബ് ഫങ്ക്ഷൻ ---
 def apply_studio_reverb(audio_segment, room_size):
     if room_size == 0:
         return audio_segment
     reverb_output = audio_segment
     delays = [20, 40, 65, 85]
     for d in delays:
-        gain_reduction = 15.0 - (room_size * 10.0)
-        rev_layer = audio_segment.minus_dB(gain_reduction)
+        gain_reduction = int(15.0 - (room_size * 10.0))
+        rev_layer = audio_segment - gain_reduction
         reverb_output = reverb_output.overlay(rev_layer, position=d)
     return reverb_output
 
@@ -187,41 +189,41 @@ elif option == "🎚️ Pro Audio Enhancer & Studio":
                 
             with c2:
                 st.markdown("### 🎸 Equalizer (EQ)")
-                bass_boost = st.slider("Bass Booster 🔥", -10.0, 30.0, 5.0, 0.5)
-                treble_boost = st.slider("Treble Booster ✨", -10.0, 30.0, 2.0, 0.5)
+                bass_boost = st.slider("Bass Booster 🔥", -10.0, 30.0, 10.0, 0.5)
+                treble_boost = st.slider("Treble Booster ✨", -10.0, 30.0, 4.0, 0.5)
 
             with c3:
                 st.markdown("### 🏛️ Professional Effects")
-                reverb_level = st.slider("Studio Reverb (Room Size)", 0.0, 1.0, 0.0, 0.05)
-                echo_delay = st.slider("Echo Delay (Time ms)", 0, 1000, 0, 20)
-                echo_feedback = st.slider("Echo Repeat (Feedback)", 0.0, 1.0, 0.4, 0.05)
-                echo_count = st.slider("Total Echo Repeats", 1, 5, 3) # ഇവിടെ ഫിക്സ് ചെയ്തു!
+                reverb_level = st.slider("Studio Reverb (Room Size)", 0.0, 1.0, 0.20, 0.05)
+                echo_delay = st.slider("Echo Delay (Time ms)", 0, 1000, 300, 20)
+                echo_feedback = st.slider("Echo Repeat (Feedback)", 0.0, 1.0, 0.30, 0.05)
+                echo_count = st.slider("Total Echo Repeats", 1, 5, 3)
 
             if st.button("🎛️ Apply Studio Effects", type="primary"):
                 with st.spinner("ഓഡിയോ മാസ്റ്ററിംഗ് ചെയ്തുകൊണ്ടിരിക്കുന്നു..."):
                     
-                    # 1. Volume
+                    # 1. Volume മാറ്റുന്നു
                     processed = audio_segment + vol_change
                     
-                    # 2. EQ
+                    # 2. EQ ഫിൽട്ടറുകൾ
                     processed = apply_eq(processed, bass_boost, treble_boost)
                     
-                    # 3. Separate Reverb
+                    # 3. റീവെർബ് അപ്ലൈ ചെയ്യുന്നു
                     if reverb_level > 0:
                         processed = apply_studio_reverb(processed, reverb_level)
                     
-                    # 4. Pure Echo
+                    # 4. എക്കോ അപ്ലൈ ചെയ്യുന്നു
                     if echo_delay > 0 and echo_feedback > 0:
                         processed = apply_pure_echo(processed, echo_delay, echo_feedback, echo_count)
                     
-                    # 5. Compressor
+                    # 5. നോർമലൈസേഷൻ / കംപ്രസ്സർ
                     if compressor_on:
                         processed = pydub.effects.normalize(processed)
                     
                     out_io = io.BytesIO()
                     processed.export(out_io, format="wav")
                     
-                    st.success("🎯 മാസ്റ്ററിംഗ് പൂർത്തിയായി!")
+                    st.success("🎯 മാസ്റ്ററിംഗ് പൂർത്തിയായി! ഫയൽ താഴെ പ്ലേ ചെയ്യാം.")
                     st.audio(out_io.getvalue(), format="audio/wav")
                     st.download_button("📥 Download Mastered File", out_io.getvalue(), "studio_mastered.wav", "audio/wav")
         except Exception as e:
