@@ -41,7 +41,6 @@ if option == "Text to Voice":
     async def generate_voice(text, voice, rate):
         communicate = edge_tts.Communicate(text, voice_options[voice], rate=f"{int((rate - 1) * 100):+d}%")
         data = b""
-        async len_chunk = 0
         async for chunk in communicate.stream():
             if chunk["type"] == "audio":
                 data += chunk["data"]
