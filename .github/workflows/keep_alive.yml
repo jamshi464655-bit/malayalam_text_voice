@@ -1,0 +1,14 @@
+name: Keep Streamlit App Alive
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  ping-app:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Ping Streamlit URL
+      run: |
+        curl -I "https://malayalamtextvoice-xh2n8yqjcpb48o8uucszmq.streamlit.app/"
